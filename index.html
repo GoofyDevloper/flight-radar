@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Flight Radar ✈️</title>
+  <title>Flight Radar - Aircraft Only ✈️</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -14,7 +14,7 @@
 </head>
 <body>
 
-<h2>Flight Radar ✈️</h2>
+<h2>Flight Radar - Aircraft Only ✈️</h2>
 <div id="map"></div>
 
 <script>
@@ -32,9 +32,6 @@ navigator.geolocation.getCurrentPosition(pos => {
     maxZoom: 19,
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
   }).addTo(map);
-
-  // Your location marker
-  L.marker([userLat, userLon]).addTo(map).bindPopup("You").openPopup();
 
   loadPlanes();
   setInterval(loadPlanes, 5000);
