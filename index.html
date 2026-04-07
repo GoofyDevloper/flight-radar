@@ -1,66 +1,110 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Flight Radar - Aircraft Only ✈️</title>
+  <meta charset="UTF-8">
+  <title>Flight Radar - Live Aircraft Tracking ✈️</title>
 
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <style>
-    body { margin:0; background:#fff; color:#000; text-align:center; font-family: Arial, sans-serif; }
-    #map { height:90vh; width:100%; }
-    h2 { margin: 10px 0; }
+    body { margin:0; font-family: Arial, sans-serif; }
+    #map { height: 100vh; width: 100vw; }
+    .legend {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.8);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 14px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+    .legend b { display:block; margin-bottom:5px; }
   </style>
 </head>
 <body>
 
-<h2>Flight Radar - Aircraft Only ✈️</h2>
 <div id="map"></div>
+<div class="legend">
+  <b>Legend:</b>
+  <div>🟢 You</div>
+  <div>✈️ Aircraft</div>
+</div>
 
 <script>
-let map, userLat, userLon, planeMarkers = [];
+let map;
+let userMarker;
+let planeMarkers = [];
 
-// get user location
-navigator.geolocation.getCurrentPosition(pos => {
-  userLat = pos.coords.latitude;
-  userLon = pos.coords.longitude;
-
-  map = L.map('map').setView([userLat, userLon], 8);
-
-  // Esri World Imagery satellite tile layer (white/light style)
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19,
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-  }).addTo(map);
-
-  loadPlanes();
-  setInterval(loadPlanes, 5000);
+// Optional: custom plane icon
+const planeIcon = L.icon({
+  iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/e/e2/Plane_icon.svg', // free plane icon
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+  popupAnchor: [0, -16]
 });
 
-// Load planes and update markers
-function loadPlanes(){
-  if (!userLat || !userLon) return;
+// Get user location
+navigator.geolocation.getCurrentPosition(position => {
+  const lat = position.coords.latitude;
+  const lon = position.coords.longitude;
 
-  fetch(`https://api.allorigins.win/raw?url=https://api.adsbexchange.com/v2/lat/${userLat}/lon/${userLon}/dist/50/`)
-  .then(response => response.json())
-  .then(data => {
-    // Remove existing plane markers
-    planeMarkers.forEach(marker => map.removeLayer(marker));
-    planeMarkers = [];
+  // Initialize map
+  map = L.map('map').setView([lat, lon], 8);
 
-    data.ac.forEach(p => {
-      if (p.lat && p.lon) {
-        let marker = L.marker([p.lat, p.lon]).addTo(map)
-          .bindPopup(
-            `<b>Flight:</b> ${p.flight || "N/A"}<br>` +
-            `<b>Altitude:</b> ${p.alt_baro || "N/A"} ft<br>` +
-            `<b>Speed:</b> ${p.gs || "N/A"} kts`
-          );
-        planeMarkers.push(marker);
+  // White satellite map
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri'
+  }).addTo(map);
+
+  // Add user marker
+  userMarker = L.marker([lat, lon]).addTo(map).bindPopup("You").openPopup();
+
+  // Load planes initially and refresh every 5 seconds
+  loadPlanes(lat, lon);
+  setInterval(() => loadPlanes(lat, lon), 5000);
+
+}, err => {
+  alert("Failed to get your location. Please allow location access.");
+});
+
+// Fetch planes from ADS-B Exchange via proxy
+function loadPlanes(lat, lon) {
+  if (!lat || !lon) return;
+
+  const radius = 100; // in km
+
+  fetch(`https://api.allorigins.win/raw?url=https://api.adsbexchange.com/v2/lat/${lat}/lon/${lon}/dist/${radius}/`)
+    .then(resp => resp.json())
+    .then(data => {
+      // Remove old plane markers
+      planeMarkers.forEach(marker => map.removeLayer(marker));
+      planeMarkers = [];
+
+      if (!data.ac || data.ac.length === 0) {
+        console.log("No planes found nearby.");
+        return;
       }
-    });
-  })
-  .catch(err => console.error("Failed to load plane data", err));
+
+      // Add new plane markers
+      data.ac.forEach(plane => {
+        if (plane.lat && plane.lon) {
+          const marker = L.marker([plane.lat, plane.lon], {icon: planeIcon}).addTo(map);
+          marker.bindPopup(`
+            <b>Flight:</b> ${plane.flight || 'N/A'}<br>
+            <b>Altitude:</b> ${plane.alt_baro || 'N/A'} ft<br>
+            <b>Speed:</b> ${plane.gs || 'N/A'} kts<br>
+            <b>ICAO:</b> ${plane.icaocode || 'N/A'}
+          `);
+          planeMarkers.push(marker);
+        }
+      });
+    })
+    .catch(err => console.error("Failed to load plane data:", err));
 }
 </script>
 
