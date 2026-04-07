@@ -1,188 +1,70 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Flight Tracker By Sourav</title>
+  <title>Flight Radar ✈️</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <style>
-    body { background:#0b0f1a; color:white; text-align:center; font-family:Arial; }
-    #map { height:500px; width:100%; border-radius:10px; }
-    .label { font-size:10px; color:white; text-shadow:0 0 5px black; }
+    body { margin:0; background:#fff; color:#000; text-align:center; font-family: Arial, sans-serif; }
+    #map { height:90vh; width:100%; }
+    h2 { margin: 10px 0; }
   </style>
 </head>
 <body>
 
-<h2>Ultimate Flight Radar ✈️</h2>
+<h2>Flight Radar ✈️</h2>
 <div id="map"></div>
 
 <script>
-// 🔔 Ask notification permission
-if ("Notification" in window) {
-  Notification.requestPermission();
-}
+let map, userLat, userLon, planeMarkers = [];
 
-let map, userLat, userLon;
-let planes = [];
-let markers = {};
-let trails = {};
-let lastPos = {};
-let alertedPlanes = {};
+// get user location
+navigator.geolocation.getCurrentPosition(pos => {
+  userLat = pos.coords.latitude;
+  userLon = pos.coords.longitude;
 
-// Airlines (your list)
-function getAirline(code){
-  if(!code) return "✈️";
-  code = code.toUpperCase();
+  map = L.map('map').setView([userLat, userLon], 8);
 
-  if(code.startsWith("AI")) return "Air India";
-  if(code.startsWith("6E")) return "IndiGo";
-  if(code.startsWith("IAF")) return "Indian Air Force";
-  if(code.startsWith("SV")) return "Saudia";
-  if(code.startsWith("EK")) return "Emirates";
-  if(code.startsWith("FH")) return "Freebird";
-  if(code.startsWith("QP")) return "Akasa Air";
-  if(code.startsWith("IX")) return "Air India Express";
-  if(code.startsWith("SQ")) return "Singapore Airlines";
-  if(code.startsWith("AK") || code.startsWith("I5")) return "AirAsia";
-  if(code.startsWith("G9")) return "Air Arabia";
-  if(code.startsWith("5X")) return "UPS Cargo";
-  if(code.startsWith("FX")) return "FedEx";
+  // Esri World Imagery satellite tile layer (white/light style)
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+  }).addTo(map);
 
-  return code;
-}
-
-// Icon
-function getIcon(heading, text){
-  return L.divIcon({
-    html: `
-      <div style="text-align:center">
-        <div class="label">${text}</div>
-        <img src="https://img.icons8.com/ios-filled/50/ffffff/airplane-take-off.png"
-        style="width:25px; transform: rotate(${heading||0}deg);">
-      </div>
-    `,
-    className: ''
-  });
-}
-
-// Distance check
-function isNear(lat1, lon1, lat2, lon2){
-  let dLat = lat1 - lat2;
-  let dLon = lon1 - lon2;
-  return Math.sqrt(dLat*dLat + dLon*dLon) < 0.03;
-}
-
-// Low altitude
-function isLowAltitude(alt){
-  return alt && alt < 10000;
-}
-
-// Init map
-function initMap(lat, lon){
-  userLat = lat;
-  userLon = lon;
-
-  map = L.map('map').setView([lat, lon], 9);
-
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-
-  L.marker([lat, lon]).addTo(map).bindPopup("You 📍");
+  // Your location marker
+  L.marker([userLat, userLon]).addTo(map).bindPopup("You").openPopup();
 
   loadPlanes();
   setInterval(loadPlanes, 5000);
-  setInterval(animatePlanes, 1000);
-}
-
-// Fetch planes
-function loadPlanes(){
-  fetch(`https://api.allorigins.win/raw?url=https://api.adsbexchange.com/v2/lat/${userLat}/lon/${userLon}/dist/50/`)
-  .then(r=>r.json())
-  .then(data=>{
-    planes = data.ac.filter(p=>p.lat && p.lon).slice(0,50);
-  })
-  .catch(err=>console.log(err));
-}
-
-// Animate
-function animatePlanes(){
-  planes.forEach(p=>{
-    let id = p.hex;
-    let newPos = [p.lat, p.lon];
-
-    // 🔥 ALERT SYSTEM
-    if(isNear(userLat, userLon, p.lat, p.lon) && isLowAltitude(p.alt_baro)){
-      if(!alertedPlanes[id]){
-        alertedPlanes[id] = true;
-
-        if (Notification.permission === "granted") {
-          new Notification("✈️ Plane Over You!", {
-            body: getAirline(p.flight) + " flying low nearby!",
-            icon: "https://img.icons8.com/ios-filled/50/ffffff/airplane-take-off.png"
-          });
-        }
-
-        let audio = new Audio("https://www.soundjay.com/buttons/sounds/beep-07.mp3");
-        audio.play();
-
-        if (navigator.vibrate) {
-          navigator.vibrate([300,100,300]);
-        }
-      }
-    }
-
-    // Trail
-    if(!trails[id]) trails[id]=[];
-    trails[id].push(newPos);
-    if(trails[id].length>10) trails[id].shift();
-
-    // Marker
-    if(!markers[id]){
-      markers[id] = L.marker(newPos, {
-        icon: getIcon(p.track, getAirline(p.flight))
-      }).addTo(map);
-    }
-
-    // Smooth move
-    let old = lastPos[id] || newPos;
-    let steps = 10;
-    let latStep = (newPos[0]-old[0])/steps;
-    let lonStep = (newPos[1]-old[1])/steps;
-
-    let i = 0;
-    let move = setInterval(()=>{
-      if(i>=steps) clearInterval(move);
-
-      let lat = old[0] + latStep*i;
-      let lon = old[1] + lonStep*i;
-
-      markers[id].setLatLng([lat, lon]);
-      markers[id].setIcon(getIcon(p.track, getAirline(p.flight)));
-
-      i++;
-    },100);
-
-    lastPos[id] = newPos;
-
-    // Popup
-    markers[id].bindPopup(`
-      <b>${getAirline(p.flight)}</b><br>
-      Flight: ${p.flight || "N/A"}<br>
-      Altitude: ${p.alt_baro || "N/A"} ft<br>
-      Speed: ${p.gs || "N/A"} knots
-    `);
-
-    // Trail line
-    if(trails[id].length>1){
-      L.polyline(trails[id], {weight:2}).addTo(map);
-    }
-  });
-}
-
-// Location
-navigator.geolocation.getCurrentPosition(pos=>{
-  initMap(pos.coords.latitude, pos.coords.longitude);
 });
+
+// Load planes and update markers
+function loadPlanes(){
+  if (!userLat || !userLon) return;
+
+  fetch(`https://api.allorigins.win/raw?url=https://api.adsbexchange.com/v2/lat/${userLat}/lon/${userLon}/dist/50/`)
+  .then(response => response.json())
+  .then(data => {
+    // Remove existing plane markers
+    planeMarkers.forEach(marker => map.removeLayer(marker));
+    planeMarkers = [];
+
+    data.ac.forEach(p => {
+      if (p.lat && p.lon) {
+        let marker = L.marker([p.lat, p.lon]).addTo(map)
+          .bindPopup(
+            `<b>Flight:</b> ${p.flight || "N/A"}<br>` +
+            `<b>Altitude:</b> ${p.alt_baro || "N/A"} ft<br>` +
+            `<b>Speed:</b> ${p.gs || "N/A"} kts`
+          );
+        planeMarkers.push(marker);
+      }
+    });
+  })
+  .catch(err => console.error("Failed to load plane data", err));
+}
 </script>
 
 </body>
